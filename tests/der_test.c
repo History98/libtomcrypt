@@ -1424,7 +1424,12 @@ int der_test(void)
    while (y != 0) {
       x = sizeof(buf[0]);
       DO(der_encode_asn1_length(y, buf[0], &x));
-      DO(der_decode_asn1_length(buf[0], &x, &z));
+      /* BEWARE: expected retval of der_decode_asn1_length is CRYPT_OVERFLOW:
+       * - because buf[0] does not contain actual data, just encoded length
+       * - however the proper value of z is set even under CRYPT_OVERFLOW
+       */
+      z = 0;
+      if (der_decode_asn1_length(buf[0], &x, &z) != CRYPT_OVERFLOW) return CRYPT_ERROR;
       if (y != z) {
          fprintf(stderr, "Failed to en- or decode length correctly! %lu != %lu\n", y, z);
          return 1;
