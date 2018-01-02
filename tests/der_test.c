@@ -1374,6 +1374,83 @@ static void der_asn1_test(void)
    closedir(d);
 }
 
+static void der_toolong_test(void)
+{
+   int err, failed = 0;
+   ltc_asn1_list *list;
+   unsigned long len;
+   unsigned char buf5[5], buf12[12];
+   static const unsigned char invalid1[] = {
+         0x30,0x19, /* SEQUENCE len=25 bytes */
+              0x30,0x0a, /* SEQUENCE len=10 bytes (which is wrong, should be 9) */
+                   0x04,0x05, /* OCTET STRING len=5 */ 0x2b,0x0e,0x03,0x02,0x1a,
+                   0x05,0x00, /* NULL */
+              0x04,0x0c, /* OCTET STRING len=12 */ 0xf7,0xff,0x9e,0x8b,0x7b,0xb2,0xe0,0x9b,0x70,0x93,0x5a,0x5d,
+   };
+   static const unsigned char invalid2[] = {
+         0x30,0x0d, /* SEQUENCE len=13 bytes*/
+              0x02,0x05, /* INTEGER len=5 */ 0x00,0xb7,0xba,0xba,0xe9,
+              0x02,0x04, /* INTEGER len=4 */ 0x74,0x72,0x91,0xdd,
+         0x00,0x00 /* garbage after the sequence, der_decode_sequence_flexi should ignore this */
+   };
+   static const unsigned char invalid3[] = {
+         0x30,0x0f, /* SEQUENCE len=15 bytes*/
+              0x02,0x05, /* INTEGER len=5 */ 0x00,0xb7,0xba,0xba,0xe9,
+              0x02,0x04, /* INTEGER len=4 */ 0x74,0x72,0x91,0xdd,
+              0x00,0x00  /* garbage inside the sequence */
+   };
+
+   ltc_asn1_list seqsub[2], seqmain[2], seqint[2];
+   void *int1, *int2;
+
+   mp_init_multi(&int1, &int2, NULL);
+   LTC_SET_ASN1(seqint,  0, LTC_ASN1_INTEGER,      int1,   1);
+   LTC_SET_ASN1(seqint,  1, LTC_ASN1_INTEGER,      int2,   1);
+   LTC_SET_ASN1(seqsub,  0, LTC_ASN1_OCTET_STRING, buf5,   5);
+   LTC_SET_ASN1(seqsub,  1, LTC_ASN1_NULL,         NULL,   0);
+   LTC_SET_ASN1(seqmain, 0, LTC_ASN1_SEQUENCE,     seqsub, 2);
+   LTC_SET_ASN1(seqmain, 1, LTC_ASN1_OCTET_STRING, buf12,  12);
+
+   len = sizeof(invalid1);
+   err = der_decode_sequence(invalid1, len, seqmain, 2);
+   if (err == CRYPT_OK) {
+      fprintf(stderr,"Sequence invalid%d accepted by der_decode_sequence\n", 1);
+      failed = 1;
+   }
+   err = der_decode_sequence_flexi(invalid1, &len, &list);
+   if (err == CRYPT_OK) {
+      fprintf(stderr,"Sequence invalid%d accepted by der_decode_sequence_flexi\n", 1);
+      failed = 1;
+   }
+
+   len = sizeof(invalid2);
+   err = der_decode_sequence(invalid2, len, seqint, 2);
+   if (err == CRYPT_OK) {
+      fprintf(stderr,"Sequence invalid%d accepted by der_decode_sequence\n", 2);
+      failed = 1;
+   }
+   err = der_decode_sequence_flexi(invalid2, &len, &list);
+   /* flexi parser should decode this; however returning "len" shorter than "sizeof(invalid2)" */
+   if (err != CRYPT_OK || len != 15) {
+      fprintf(stderr,"der_decode_sequence_flexi failed, err=%d (expected 0) len=%lu (expected 15)\n", err, len);
+      failed = 1;
+   }
+
+   len = sizeof(invalid3);
+   err = der_decode_sequence(invalid3, len, seqint, 2);
+   if (err == CRYPT_OK) {
+      fprintf(stderr,"Sequence invalid%d accepted by der_decode_sequence\n", 3);
+      failed = 1;
+   }
+   err = der_decode_sequence_flexi(invalid3, &len, &list);
+   if (err == CRYPT_OK) {
+      fprintf(stderr,"Sequence invalid%d accepted by der_decode_sequence_flexi\n", 3);
+      failed = 1;
+   }
+
+   mp_clear_multi(int1, int2, NULL);
+   if (failed) exit(EXIT_FAILURE);
+}
 
 int der_test(void)
 {
@@ -1750,6 +1827,7 @@ tmp_time.off_hh);
 
    der_set_test();
    der_flexi_test();
+   der_toolong_test();
    return der_choice_n_custom_test();
 }
 
